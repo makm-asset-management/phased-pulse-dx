@@ -9,6 +9,40 @@ def quantity(metric="stress", value=10, unit="MPa"):
 
 
 class GatekeeperTests(unittest.TestCase):
+    def test_explicit_boolean_contract(self):
+        gate = EvidenceGatekeeper()
+        for value in (True, False):
+            result = gate.evaluate_evidence_gate(quantity("feature_present", value, "boolean"), 0.9)
+            self.assertTrue(result["input_valid"])
+            self.assertIs(result["validated_quantity"]["value"], value)
+            self.assertFalse(result["clinical_use"])
+            self.assertFalse(result["evidence_sufficient"])
+        for value in (0, 1, 0.0, 1.0, "true", "false", None, [], {}, "unknown"):
+            self.assertFalse(gate.validate_inputs(quantity("feature_present", value, "boolean"))[0])
+        for metric, value, unit in (
+            ("stress", True, "boolean"), ("ratio", False, "boolean"),
+            ("feature_present", True, "dimensionless"), ("unknown", False, "boolean"),
+            ("stress", False, "MPa"), ("ratio", True, "dimensionless"),
+        ):
+            self.assertFalse(gate.validate_inputs(quantity(metric, value, unit))[0])
+        self.assertEqual(gate.evaluate_evidence_gate(
+            quantity("feature_present", True, "boolean"), True)["status"], "INVALID_INPUT")
+
+    def test_boolean_cache_identity_and_isolation(self):
+        gate = EvidenceGatekeeper()
+        for metric, value, unit in (
+            ("feature_present", True, "boolean"), ("feature_present", False, "boolean"),
+            ("ratio", 1, "dimensionless"), ("ratio", 0, "dimensionless"),
+        ):
+            gate.evaluate_evidence_gate(quantity(metric, value, unit), 0.9)
+        self.assertEqual(gate.cache_info()["size"], 4)
+        result = gate.evaluate_evidence_gate(quantity("feature_present", True, "boolean"), 0.9)
+        result["validated_quantity"]["value"] = False
+        result["clinical_use"] = True
+        fresh = gate.evaluate_evidence_gate(quantity("feature_present", True, "boolean"), 0.9)
+        self.assertIs(fresh["validated_quantity"]["value"], True)
+        self.assertFalse(fresh["clinical_use"])
+
     def test_invalid_constructors(self):
         for size in (0, -1, True, 1.5, "2", None):
             with self.subTest(size=size), self.assertRaises(ValueError):

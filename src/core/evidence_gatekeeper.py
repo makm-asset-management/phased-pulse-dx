@@ -16,6 +16,7 @@ class _Contract:
     minimum: float | None = None
     maximum: float | None = None
     exclusive_minimum: bool = False
+    boolean: bool = False
 
 
 _CONTRACTS = MappingProxyType({
@@ -27,6 +28,7 @@ _CONTRACTS = MappingProxyType({
     "duration": _Contract("ms", 0),
     "percentage": _Contract("percent", 0, 100),
     "ratio": _Contract("dimensionless", 0),
+    "feature_present": _Contract("boolean", boolean=True),
 })
 
 
@@ -34,7 +36,7 @@ _CONTRACTS = MappingProxyType({
 class _Configuration:
     max_cache_size: int
     model_version: str
-    contract_version: str = "metrics-v1"
+    contract_version: str = "metrics-v2"
     evidence_policy_version: str = "research-only-v1"
 
 
@@ -50,8 +52,8 @@ def _finite_number(value):
 class EvidenceGatekeeper:
     """Thread-safe bounded LRU with read-only public configuration.
 
-    Only built-in dictionaries, strings, ints and floats are accepted. Caller
-    dictionaries must not be modified concurrently while an API call is running.
+    Numeric telemetry uses built-in ints/floats; the explicit boolean contract
+    uses bool. Caller dictionaries must not be modified concurrently during a call.
     """
 
     def __init__(self, max_cache_size=1000, model_version="v1.0.0"):
@@ -105,6 +107,10 @@ class EvidenceGatekeeper:
         if unit != contract.unit:
             return False, f"{metric} requires unit {contract.unit!r}; conversions are unsupported"
         value = payload["value"]
+        if contract.boolean:
+            if type(value) is not bool:
+                return False, "feature_present requires an exact bool; missing or indeterminate is invalid"
+            return True, "valid boolean input (not evidence of diagnosis)"
         if not _finite_number(value):
             return False, "value must be a finite built-in int or float, excluding bool"
         if contract.minimum is not None and (

@@ -1,0 +1,5 @@
+[project]
+name = "phased-pulse-dx"
+version = "0.1.0"
+description = "Research-only deterministic validation and evidence gating"
+requires-python = ">=3.10"
